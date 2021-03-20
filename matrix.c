@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <mpi.h>
 #include <time.h>
+#include <limits.h>
 
 const int ROWS = 32;
 const int COLUMNS = 3;
@@ -65,18 +66,14 @@ char *argv[];
                     MPI_Send(&data, buffer_size, MPI_INT, taskId, 0, MPI_COMM_WORLD);
                 }
             }
-            printf("STEP %d\n", i);
         }
 
-        printf("-----Terminate gracefully\n");
-        printf("-----Terminate gracefully\n");
-        printf("-----Terminate gracefully\n");
-        printf("-----Terminate gracefully\n");
-        printf("-----Terminate gracefully\n");
         for (int task_index = 1; task_index < process_size; task_index++)
         {
-            int exit_token = -1;
-            MPI_Send(&exit_token, 1, MPI_INT, task_index, 0, MPI_COMM_WORLD);
+            int data[buffer_size];
+            data[0] = INT_MIN;
+            data[1] = INT_MAX;
+            MPI_Send(data, buffer_size, MPI_INT, task_index, 0, MPI_COMM_WORLD);
         }
     }
 
@@ -86,13 +83,9 @@ char *argv[];
         while (rec_buffer_size > 0)
         {
             int recv_data[2];
-            MPI_Recv(recv_data, buffer_size, MPI_INT, 0, 0, MPI_COMM_WORLD,
-                     MPI_STATUS_IGNORE);
-            rec_buffer_size = sizeof recv_data;
-            printf("\n\nSize %d\n", rec_buffer_size);
-            if (rec_buffer_size <= 0)
+            MPI_Recv(recv_data, buffer_size, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            if (recv_data[0] == INT_MIN && recv_data[1] == INT_MAX)
             {
-                printf("BREAKING BAD %d", recv_data[0]);
                 break;
             }
 
