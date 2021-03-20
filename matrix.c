@@ -6,41 +6,115 @@
 
 const int ROWS = 32;
 const int COLUMNS = 3;
+const int buffer_size = 2;
 
 void generateMatrix(int rows, int columns, int matrix[rows][columns]);
 void printMatrix(int rows, int columns, int matrix[rows][columns]);
-void multiply(int rows1, int columns1, int matrix1[rows1][columns1],
-              int rows2, int columns2, int matrix2[rows2][columns2],
-              int mul[rows1][columns2]);
+void multiplyMatrix(int rows1, int columns1, int matrix1[rows1][columns1],
+                    int rows2, int columns2, int matrix2[rows2][columns2],
+                    int mul[rows1][columns2]);
+int multiply(int a, int b);
 
 int main(argc, argv) int argc;
 char *argv[];
 {
-    int rank, size;
-    int matrix1[ROWS][COLUMNS];
-    int matrix2[COLUMNS][ROWS];
-    int mul[ROWS][ROWS];
-    generateMatrix(ROWS, COLUMNS, matrix1);
-    generateMatrix(COLUMNS, ROWS, matrix2);
+    int process_rank, process_size;
 
-    printMatrix(ROWS, COLUMNS, matrix1);
-    printMatrix(COLUMNS, ROWS, matrix2);
+    // multiplyMatrix(ROWS, COLUMNS, matrix1, COLUMNS, ROWS, matrix2, mul);
 
-    multiply(ROWS, COLUMNS, matrix1, COLUMNS, ROWS, matrix2, mul);
+    // printMatrix(ROWS, ROWS, mul);
 
-    printMatrix(ROWS, ROWS, mul);
+    MPI_Init(&argc, &argv);                       /* starts MPI */
+    MPI_Comm_rank(MPI_COMM_WORLD, &process_rank); /* get current process id */
+    MPI_Comm_size(MPI_COMM_WORLD, &process_size); /* get number of processes */
 
-    MPI_Init(&argc, &argv);               /* starts MPI */
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank); /* get current process id */
-    MPI_Comm_size(MPI_COMM_WORLD, &size); /* get number of processes */
-    printf("Hello world from process %d of %d\n", rank, size);
+    printf("Hello world from process %d of %d\n", process_rank, process_size);
+
+    if (process_rank == 0)
+    {
+        int matrix1[ROWS][COLUMNS];
+        int matrix2[COLUMNS][ROWS];
+        int mul[ROWS][ROWS];
+        generateMatrix(ROWS, COLUMNS, matrix1);
+        generateMatrix(COLUMNS, ROWS, matrix2);
+
+        printMatrix(ROWS, COLUMNS, matrix1);
+        printMatrix(COLUMNS, ROWS, matrix2);
+
+        int current_task = 0;
+        for (int i = 0; i < ROWS; i++)
+        {
+            for (int j = 0; j < COLUMNS; j++)
+            {
+                mul[i][j] = 0;
+                for (int k = 0; k < COLUMNS; k++)
+                {
+                    if (current_task == process_size - 1)
+                    {
+                        current_task = 0;
+                    }
+                    current_task++;
+                    printf("Sending to %d\n", current_task);
+                    // Task id represents the process id.
+                    int taskId = current_task % process_size;
+
+                    // Pack the data
+                    int data[buffer_size];
+                    data[0] = matrix1[i][k];
+                    data[1] = matrix2[k][j];
+                    MPI_Send(&data, buffer_size, MPI_INT, taskId, 0, MPI_COMM_WORLD);
+                }
+            }
+            printf("STEP %d\n", i);
+        }
+
+        printf("-----Terminate gracefully\n");
+        printf("-----Terminate gracefully\n");
+        printf("-----Terminate gracefully\n");
+        printf("-----Terminate gracefully\n");
+        printf("-----Terminate gracefully\n");
+        for (int task_index = 1; task_index < process_size; task_index++)
+        {
+            int exit_token = -1;
+            MPI_Send(&exit_token, 1, MPI_INT, task_index, 0, MPI_COMM_WORLD);
+        }
+    }
+
+    if (process_rank != 0)
+    {
+        int rec_buffer_size = 2;
+        while (rec_buffer_size > 0)
+        {
+            int recv_data[2];
+            MPI_Recv(recv_data, buffer_size, MPI_INT, 0, 0, MPI_COMM_WORLD,
+                     MPI_STATUS_IGNORE);
+            rec_buffer_size = sizeof recv_data;
+            printf("\n\nSize %d\n", rec_buffer_size);
+            if (rec_buffer_size <= 0)
+            {
+                printf("BREAKING BAD %d", recv_data[0]);
+                break;
+            }
+
+            int ans = recv_data[0] * recv_data[1];
+            printf("Process %d received token %d * %d = %d\n", process_rank, recv_data[0], recv_data[1], ans);
+        }
+    }
+
+    printf("Process %d EXITING", process_rank);
+
     MPI_Finalize();
     return 0;
 }
 
-void multiply(int rows1, int columns1, int matrix1[rows1][columns1],
-              int rows2, int columns2, int matrix2[rows2][columns2],
-              int mul[rows1][columns2])
+int multiply(int a, int b)
+{
+    return a * b;
+}
+
+void multiplyMatrix(int rows1, int columns1, int matrix1[rows1][columns1],
+                    int rows2, int columns2, int matrix2[rows2][columns2],
+                    int mul[rows1][columns2])
 {
     for (int i = 0; i < rows1; i++)
     {
