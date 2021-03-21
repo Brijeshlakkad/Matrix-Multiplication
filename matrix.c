@@ -8,7 +8,7 @@
 const int ROWS = 32;
 const int COLUMNS = 32;
 const int buffer_size = 2;
-const int root_process = 2;
+const int root_process = 0;
 
 void generateMatrix(int rows, int columns, int matrix[rows][columns]);
 void printMatrix(int rows, int columns, int matrix[rows][columns]);
@@ -32,6 +32,12 @@ char *argv[];
     MPI_Init(&argc, &argv);                       /* starts MPI */
     MPI_Comm_rank(MPI_COMM_WORLD, &process_rank); /* get current process id */
     MPI_Comm_size(MPI_COMM_WORLD, &process_size); /* get number of processes */
+
+    if (process_size < 2)
+    {
+        fprintf(stderr, "World size must be two for %s\n", argv[0]);
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
 
     if (process_rank == root_process)
     {
