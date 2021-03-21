@@ -45,7 +45,7 @@ char *argv[];
         int current_task = 0;
         for (int i = 0; i < ROWS; i++)
         {
-            for (int j = 0; j < COLUMNS; j++)
+            for (int j = 0; j < ROWS; j++)
             {
                 mul[i][j] = 0;
                 for (int k = 0; k < COLUMNS; k++)
@@ -64,6 +64,13 @@ char *argv[];
                     data[0] = matrix1[i][k];
                     data[1] = matrix2[k][j];
                     MPI_Send(&data, buffer_size, MPI_INT, taskId, 0, MPI_COMM_WORLD);
+
+                    int recv_data;
+                    MPI_Recv(&recv_data, 1, MPI_INT, taskId, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                    printf("Process %d received token %d\n", process_rank, recv_data);
+
+                    mul[i][j] += recv_data;
                 }
             }
         }
@@ -75,6 +82,11 @@ char *argv[];
             data[1] = INT_MAX;
             MPI_Send(data, buffer_size, MPI_INT, task_index, 0, MPI_COMM_WORLD);
         }
+
+        printMatrix(ROWS, ROWS, mul);
+        // printf("\n\nExpected\n");
+        // multiplyMatrix(ROWS, COLUMNS, matrix1, COLUMNS, ROWS, matrix2, mul);
+        // printMatrix(ROWS, ROWS, mul);
     }
 
     if (process_rank != 0)
@@ -91,10 +103,11 @@ char *argv[];
 
             int ans = recv_data[0] * recv_data[1];
             printf("Process %d received token %d * %d = %d\n", process_rank, recv_data[0], recv_data[1], ans);
+
+            MPI_Send(&ans, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
         }
     }
-
-    printf("Process %d EXITING", process_rank);
+    printf("Process %d EXITING\n", process_rank);
 
     MPI_Finalize();
     return 0;
