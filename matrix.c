@@ -15,6 +15,8 @@ void multiplyMatrix(int rows1, int columns1, int matrix1[rows1][columns1],
                     int rows2, int columns2, int matrix2[rows2][columns2],
                     int mul[rows1][columns2]);
 int multiply(int a, int b);
+void splitRow(int rows, int columns, int split_row, int matrix[rows][columns], int matrix_part[rows]);
+void inverseColumnToRow(int rows, int columns, int inv_column, int matrix[rows][columns], int inverse_row_matrix[rows]);
 
 int main(argc, argv) int argc;
 char *argv[];
@@ -45,42 +47,41 @@ char *argv[];
         int current_task = 0;
         for (int i = 0; i < ROWS; i++)
         {
+            int matrix1_part[COLUMNS];
+            inverseColumnToRow(ROWS, COLUMNS, i, matrix1, matrix1_part);
             for (int j = 0; j < ROWS; j++)
             {
-                mul[i][j] = 0;
-                for (int k = 0; k < COLUMNS; k++)
+
+                if (current_task == process_size - 1)
                 {
-                    if (current_task == process_size - 1)
-                    {
-                        current_task = 0;
-                    }
-                    current_task++;
-                    printf("Sending to %d\n", current_task);
-                    // Task id represents the process id.
-                    int taskId = current_task % process_size;
-
-                    // Pack the data
-                    int data[buffer_size];
-                    data[0] = matrix1[i][k];
-                    data[1] = matrix2[k][j];
-                    MPI_Send(&data, buffer_size, MPI_INT, taskId, 0, MPI_COMM_WORLD);
-
-                    int recv_data;
-                    MPI_Recv(&recv_data, 1, MPI_INT, taskId, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-                    printf("Process %d received token %d\n", process_rank, recv_data);
-
-                    mul[i][j] += recv_data;
+                    current_task = 0;
                 }
+                current_task++;
+                // printf("Sending to %d\n", current_task);
+
+                // Task id represents the process id.
+                int taskId = current_task % process_size;
+
+                int matrix2_part[COLUMNS];
+                splitRow(COLUMNS, ROWS, j, matrix2, matrix2_part);
+
+                MPI_Send(&COLUMNS, 1, MPI_INT, taskId, 0, MPI_COMM_WORLD);
+
+                MPI_Send(&matrix1_part, COLUMNS, MPI_INT, taskId, 0, MPI_COMM_WORLD);
+                MPI_Send(&matrix2_part, COLUMNS, MPI_INT, taskId, 0, MPI_COMM_WORLD);
+
+                int recv_data;
+                MPI_Recv(&recv_data, 1, MPI_INT, taskId, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                mul[i][j] = recv_data;
             }
         }
 
+        // TERMINATES the processes.
         for (int task_index = 1; task_index < process_size; task_index++)
         {
-            int data[buffer_size];
-            data[0] = INT_MIN;
-            data[1] = INT_MAX;
-            MPI_Send(data, buffer_size, MPI_INT, task_index, 0, MPI_COMM_WORLD);
+            int exit_token = INT_MIN;
+            MPI_Send(&exit_token, 1, MPI_INT, task_index, 0, MPI_COMM_WORLD);
         }
 
         printMatrix(ROWS, ROWS, mul);
@@ -89,22 +90,31 @@ char *argv[];
         // printMatrix(ROWS, ROWS, mul);
     }
 
+    MPI_Status status;
     if (process_rank != 0)
     {
-        int rec_buffer_size = 2;
-        while (rec_buffer_size > 0)
+        while (1)
         {
-            int recv_data[2];
-            MPI_Recv(recv_data, buffer_size, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            if (recv_data[0] == INT_MIN && recv_data[1] == INT_MAX)
+            int total_rows;
+            MPI_Recv(&total_rows, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+            if (total_rows == INT_MIN)
             {
                 break;
             }
+            int matrix1_part[total_rows];
+            int matrix2_part[total_rows];
+            MPI_Recv(&matrix1_part, total_rows, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+            MPI_Recv(&matrix2_part, total_rows, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
 
-            int ans = recv_data[0] * recv_data[1];
-            printf("Process %d received token %d * %d = %d\n", process_rank, recv_data[0], recv_data[1], ans);
+            int product_matrix = 0;
+            for (int row_index = 0; row_index < total_rows; row_index++)
+            {
+                product_matrix += matrix1_part[row_index] * matrix2_part[row_index];
+            }
 
-            MPI_Send(&ans, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+            // printf("Process %d received token %d\n", process_rank, product_matrix);
+
+            MPI_Send(&product_matrix, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
         }
     }
     printf("Process %d EXITING\n", process_rank);
@@ -116,6 +126,22 @@ char *argv[];
 int multiply(int a, int b)
 {
     return a * b;
+}
+
+void splitRow(int rows, int columns, int split_row, int matrix[rows][columns], int matrix_part[rows])
+{
+    for (int row_index = 0; row_index < rows; row_index++)
+    {
+        matrix_part[row_index] = matrix[row_index][split_row];
+    }
+}
+
+void inverseColumnToRow(int rows, int columns, int inv_row, int matrix[rows][columns], int inverse_row_matrix[rows])
+{
+    for (int column_index = 0; column_index < columns; column_index++)
+    {
+        inverse_row_matrix[column_index] = matrix[inv_row][column_index];
+    }
 }
 
 void multiplyMatrix(int rows1, int columns1, int matrix1[rows1][columns1],
