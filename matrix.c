@@ -12,9 +12,7 @@ const int root_process = 0;
 
 void generateMatrix(int *matrix, int rows, int columns);
 void printMatrix(int *matrix, int rows, int columns);
-void multiplyMatrix(int rows1, int columns1, int matrix1[rows1][columns1],
-                    int rows2, int columns2, int matrix2[rows2][columns2],
-                    int mul[rows1][columns2]);
+void multiplyMatrix(int *matrix1, int rows1, int columns1, int *matrix2, int rows2, int columns2);
 int multiply(int a, int b);
 int *inverseColumnToRow(int *matrix, int rows, int columns);
 // void inverseColumnToRow(int rows, int columns, int inv_column, int matrix[rows][columns], int inverse_row_matrix[rows]);
@@ -114,57 +112,72 @@ char *argv[];
     // Columns of matrix 2
     // Resultant product matrix will be the size of this columns of matrix 2.
     // Because ROWS % number_of_process = 0
-    int product_matrix_work_length = LENGTH_OF_METRIX / send_count;
-    printf("send_count %d\n", send_count);
-    printf("matrix2_columns %d\n", product_matrix_work_length);
+    int product_matrix_rows = send_count / COLUMNS;
+
+    // printf("send_count %d\n", send_count);
+    // printf("product_matrix_rows %d\n", product_matrix_rows);
     int *product_matrix;
-    if ((product_matrix = malloc((product_matrix_work_length * ROWS) * sizeof(int))) == NULL)
+    // Example to understand the below steps.
+    // Let's assume, matrix1 = 4x3 and matrix2 = 3x4 and number_of_processes = 2
+    // Sending half of matrix1 to each process. (2x3 of matrix1 and sending whole matrix2 to all the processes)
+    // matrix1 will have a resultant half product matrix of (2x4).
+    // ROWS is number of rows for matrix1 and number of columns for matrix2.
+    // COLUMNS is number of columns for matrix1 and number of rows for matrix2.
+    int product_matrix_length = product_matrix_rows * ROWS;
+    if ((product_matrix = malloc((product_matrix_length) * sizeof(int))) == NULL)
     {
         printf("Resultant matrix cannot be created!");
         exit(1);
     }
 
-    int produc_matrix_index;
-    for (int product_matrix_work_index = 0; product_matrix_work_index < product_matrix_work_length; product_matrix_work_index++)
+    for (int product_matrix_row_index = 0; product_matrix_row_index < product_matrix_rows; product_matrix_row_index++)
     {
-        for (int column_index = 0; column_index < ROWS; column_index++)
+        for (int row_index = 0; row_index < ROWS; row_index++)
         {
-            produc_matrix_index = product_matrix_work_index * ROWS + column_index;
-            product_matrix[produc_matrix_index] = 0;
-            for (int row_index = 0; row_index < ROWS; row_index++)
+            int product_matrix_index = product_matrix_row_index * ROWS + row_index;
+            product_matrix[product_matrix_index] = 0;
+            for (int column_index = 0; column_index < COLUMNS; column_index++)
             {
-                // printf("%d::: %d -> ++ %d * %d\n", process_rank, produc_matrix_index, row_index, ((row_index) * (ROWS) + column_index));
-                // printf("%d::: %d += %d * %d\n\n", process_rank, product_matrix[produc_matrix_index], matrix1_rows[row_index], matrix2[(row_index) * (ROWS) + column_index]);
-                product_matrix[produc_matrix_index] += matrix1_rows[row_index + ROWS * (product_matrix_work_index)] * matrix2[(row_index) * (ROWS) + column_index];
+                // printf("%d::: %d -> ++ %d * %d\n", process_rank, product_matrix_index, (column_index + COLUMNS * (product_matrix_row_index)), ((column_index) * (ROWS) + row_index));
+                // printf("%d::: %d += %d * %d\n", process_rank, product_matrix[product_matrix_index], matrix1_rows[column_index + ROWS * (product_matrix_index)], matrix2[(column_index) * (ROWS) + row_index]);
+                product_matrix[product_matrix_index] += matrix1_rows[column_index + COLUMNS * (product_matrix_row_index)] * matrix2[(column_index) * (ROWS) + row_index];
             }
-            printf("%d::: %d -> %d\n", process_rank, produc_matrix_index, product_matrix[produc_matrix_index]);
+            // printf("%d::: %d -> %d\n\n", process_rank, product_matrix_index, product_matrix[product_matrix_index]);
         }
     }
-    printf("\nproduct_matrix %d %d: %d", process_rank, produc_matrix_index, product_matrix_work_length * ROWS);
-    printPartialMatrix(product_matrix, product_matrix_work_length * ROWS);
+
+    // printf("\nproduct_matrix %d %d", process_rank, product_matrix_length);
+    // printPartialMatrix(product_matrix, product_matrix_length);
 
     // Prepare matrices
-    // int resultant_matrix[process_size][ROWS * (LENGTH_OF_METRIX / send_count)];
+    // int resultant_matrix[process_size][product_matrix_length];
     int *resultant_matrix;
     if (root_process == process_rank)
     {
-        if ((resultant_matrix = malloc((LENGTH_OF_METRIX) * sizeof(int))) == NULL)
+        // ROWS * ROWS = process_size * product_matrix_length
+        if ((resultant_matrix = malloc((process_size * product_matrix_length) * sizeof(int))) == NULL)
         {
             printf("Resultant matrix cannot be created!");
+            
             exit(1);
         }
     }
 
     // Gather the row sums from the buffer and put it in matrix C
-    MPI_Gather(product_matrix, ROWS * (LENGTH_OF_METRIX / send_count), MPI_INT, resultant_matrix, ROWS * (LENGTH_OF_METRIX / send_count), MPI_INT, root_process, MPI_COMM_WORLD);
+    MPI_Gather(product_matrix, product_matrix_length, MPI_INT, resultant_matrix, product_matrix_length, MPI_INT, root_process, MPI_COMM_WORLD);
 
     MPI_Barrier(MPI_COMM_WORLD);
 
     if (root_process == process_rank)
     {
         printf("resultant_matrix");
-        printPartialMatrix(resultant_matrix, ROWS * ROWS);
+        // printPartialMatrix(resultant_matrix, ROWS * ROWS);
+        printMatrix(resultant_matrix, ROWS, ROWS);
         // print2DMatrix(process_size, ROWS * (LENGTH_OF_METRIX / send_count), resultant_matrix);
+
+        // printf("\n\nExpected\n");
+        // multiplyMatrix(matrix1, ROWS, COLUMNS, matrix2, COLUMNS, ROWS);
+
         float ending_time = MPI_Wtime();
         printDashedLine(2);
         printf("Ending time: %f", ending_time);
@@ -175,10 +188,6 @@ char *argv[];
         printf("Took %f", calc_time);
         printDashedLine(2);
     }
-
-    // printf("\n\nExpected\n");
-    // multiplyMatrix(ROWS, COLUMNS, matrix1, COLUMNS, ROWS, matrix2, mul);
-    // printMatrix(ROWS, ROWS, mul);
 
     MPI_Finalize();
     if (root_process == process_rank)
@@ -220,21 +229,28 @@ int *inverseColumnToRow(int *matrix, int rows, int columns)
 //     }
 // }
 
-void multiplyMatrix(int rows1, int columns1, int matrix1[rows1][columns1],
-                    int rows2, int columns2, int matrix2[rows2][columns2],
-                    int mul[rows1][columns2])
+void multiplyMatrix(int *matrix1, int rows1, int columns1, int *matrix2, int rows2, int columns2)
 {
+    int *result_matrix;
+    if ((result_matrix = malloc(rows1 * columns2 * sizeof(int))) == NULL)
+    {
+        printf("Resultant matrix cannot be created!");
+        exit(1);
+    }
     for (int i = 0; i < rows1; i++)
     {
         for (int j = 0; j < columns2; j++)
         {
-            mul[i][j] = 0;
+            result_matrix[i * columns2 + j] = 0;
             for (int k = 0; k < rows2; k++)
             {
-                mul[i][j] += matrix1[i][k] * matrix2[k][j];
+                // printf("%d -> %d * %d\n", i * columns2 + j, i * rows2 + k, k * columns2 + j);
+                // printf("%d += %d * %d\n", result_matrix[i * columns2 + j], matrix1[i * rows2 + k], matrix2[k * columns2 + j]);
+                result_matrix[i * columns2 + j] += matrix1[i * rows2 + k] * matrix2[k * columns2 + j];
             }
         }
     }
+    printMatrix(result_matrix, rows1, columns2);
 }
 
 void generateMatrix(int *matrix, int rows, int columns)

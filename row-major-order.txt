@@ -71,3 +71,16 @@ LENGTH_OF_MATRIX = 9
 
 NP = 3
 SEND_COUNT = 2
+
+
+4 x 3 MUL 3 x 4
+x   x   x
+x   x   x
+
+
+y   y   y   y
+y   y   y   y
+y   y   y   y
+
+xy  xy  xy  xy
+xy  xy  xy  xy
