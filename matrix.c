@@ -27,7 +27,7 @@ char *argv[];
 {
     if (argc != 3)
     {
-        fprintf(stderr, "Usage: please enter the dimension of the matrix(ROWS<space>COLUMNS<return>)\n");
+        fprintf(stderr, "Usage: please enter the dimension of the matrix(ROWS<space>32<return>)\n");
         exit(1);
     }
     const int ROWS = atoi(argv[1]);
@@ -35,17 +35,25 @@ char *argv[];
 
     int process_rank, process_size;
 
-    // multiplyMatrix(ROWS, COLUMNS, matrix1, COLUMNS, ROWS, matrix2, mul);
-
-    // printMatrix(ROWS, ROWS, mul);
-
     if (MPI_Init(&argc, &argv) != MPI_SUCCESS)
     {
         perror("Error initializing MPI!");
         exit(1);
     }
+
     MPI_Comm_rank(MPI_COMM_WORLD, &process_rank); /* get current process id */
     MPI_Comm_size(MPI_COMM_WORLD, &process_size); /* get number of processes */
+
+    if (ROWS % process_size != 0)
+    {
+        if (process_rank == 0)
+        {
+            printDashedLine(1);
+            fprintf(stderr, "Usage: please enter process size such that %d %% number_of_process == 0\nOR\nEnter the different number rows!\n", ROWS);
+        }
+        MPI_Finalize();
+        exit(1);
+    }
 
     if (process_size < 2)
     {
@@ -58,9 +66,9 @@ char *argv[];
 
     int *matrix1;
 
-    // As second matrix going to be broadcasted, memory allocation should be done by every process.
+    // As second matrix must be possessed by every process, memory allocation should be done by every process.
     int *matrix2;
-    if ((matrix2 = (int *)malloc(LENGTH_OF_METRIX * sizeof(int))) == NULL)
+    if ((matrix2 = malloc(LENGTH_OF_METRIX * sizeof(int))) == NULL)
     {
         printf("Second matrix cannot be created!");
         exit(1);
@@ -84,8 +92,6 @@ char *argv[];
 
         printMatrix(matrix1, ROWS, COLUMNS);
         printMatrix(matrix2, COLUMNS, ROWS);
-
-        // *inverse_matrix2 = inverseColumnToRow(matrix2, COLUMNS, ROWS);
     }
 
     int send_count = LENGTH_OF_METRIX / process_size;
@@ -100,56 +106,76 @@ char *argv[];
     MPI_Scatter(matrix1, send_count, MPI_INT, matrix1_rows, send_count, MPI_INT, root_process, MPI_COMM_WORLD);
     MPI_Bcast(matrix2, LENGTH_OF_METRIX, MPI_INT, root_process, MPI_COMM_WORLD);
 
-    printf("matrix 1");
+    printf("\nmatrix 1\n");
     printPartialMatrix(matrix1_rows, send_count);
-    printf("matrix 2");
+    printf("\nmatrix 2\n");
     printPartialMatrix(matrix2, LENGTH_OF_METRIX);
 
     // Columns of matrix 2
     // Resultant product matrix will be the size of this columns of matrix 2.
-    int matrix2_columns = LENGTH_OF_METRIX / send_count;
+    // Because ROWS % number_of_process = 0
+    int product_matrix_work_length = LENGTH_OF_METRIX / send_count;
+    printf("send_count %d\n", send_count);
+    printf("matrix2_columns %d\n", product_matrix_work_length);
     int *product_matrix;
-    if ((product_matrix = malloc(matrix2_columns * sizeof(int))) == NULL)
+    if ((product_matrix = malloc((product_matrix_work_length * ROWS) * sizeof(int))) == NULL)
     {
         printf("Resultant matrix cannot be created!");
         exit(1);
     }
 
-    for (int column_index = 0; column_index < matrix2_columns; column_index++)
+    int produc_matrix_index;
+    for (int product_matrix_work_index = 0; product_matrix_work_index < product_matrix_work_length; product_matrix_work_index++)
     {
-        product_matrix[column_index] = 0;
-        for (int row_index = 0; row_index < send_count; row_index++)
+        for (int column_index = 0; column_index < ROWS; column_index++)
         {
-            // printf("(column_index) * (matrix2_columns) + row_index %d\n", (row_index) * (matrix2_columns) + column_index);
-            product_matrix[column_index] += matrix1_rows[row_index] * matrix2[(row_index) * (matrix2_columns) + column_index];
+            produc_matrix_index = product_matrix_work_index * ROWS + column_index;
+            product_matrix[produc_matrix_index] = 0;
+            for (int row_index = 0; row_index < ROWS; row_index++)
+            {
+                // printf("%d::: %d -> ++ %d * %d\n", process_rank, produc_matrix_index, row_index, ((row_index) * (ROWS) + column_index));
+                // printf("%d::: %d += %d * %d\n\n", process_rank, product_matrix[produc_matrix_index], matrix1_rows[row_index], matrix2[(row_index) * (ROWS) + column_index]);
+                product_matrix[produc_matrix_index] += matrix1_rows[row_index + ROWS * (product_matrix_work_index)] * matrix2[(row_index) * (ROWS) + column_index];
+            }
+            printf("%d::: %d -> %d\n", process_rank, produc_matrix_index, product_matrix[produc_matrix_index]);
         }
     }
-    printf("product_matrix");
-    printPartialMatrix(product_matrix, matrix2_columns);
+    printf("\nproduct_matrix %d %d: %d", process_rank, produc_matrix_index, product_matrix_work_length * ROWS);
+    printPartialMatrix(product_matrix, product_matrix_work_length * ROWS);
 
     // Prepare matrices
-    int resultant_matrix[ROWS][ROWS];
+    // int resultant_matrix[process_size][ROWS * (LENGTH_OF_METRIX / send_count)];
+    int *resultant_matrix;
+    if (root_process == process_rank)
+    {
+        if ((resultant_matrix = malloc((LENGTH_OF_METRIX) * sizeof(int))) == NULL)
+        {
+            printf("Resultant matrix cannot be created!");
+            exit(1);
+        }
+    }
 
     // Gather the row sums from the buffer and put it in matrix C
-    MPI_Gather(product_matrix, matrix2_columns, MPI_INT, &resultant_matrix, ROWS, MPI_INT, root_process, MPI_COMM_WORLD);
+    MPI_Gather(product_matrix, ROWS * (LENGTH_OF_METRIX / send_count), MPI_INT, resultant_matrix, ROWS * (LENGTH_OF_METRIX / send_count), MPI_INT, root_process, MPI_COMM_WORLD);
 
     MPI_Barrier(MPI_COMM_WORLD);
 
     if (root_process == process_rank)
     {
         printf("resultant_matrix");
-        print2DMatrix(ROWS, ROWS, resultant_matrix);
+        printPartialMatrix(resultant_matrix, ROWS * ROWS);
+        // print2DMatrix(process_size, ROWS * (LENGTH_OF_METRIX / send_count), resultant_matrix);
+        float ending_time = MPI_Wtime();
+        printDashedLine(2);
+        printf("Ending time: %f", ending_time);
+        printDashedLine(2);
+
+        float calc_time = ending_time - starting_time;
+        printDashedLine(2);
+        printf("Took %f", calc_time);
+        printDashedLine(2);
     }
 
-    float ending_time = MPI_Wtime();
-    printDashedLine(2);
-    printf("Ending time: %f", ending_time);
-    printDashedLine(2);
-
-    float calc_time = ending_time - starting_time;
-    printDashedLine(2);
-    printf("Took %f", calc_time);
-    printDashedLine(2);
     // printf("\n\nExpected\n");
     // multiplyMatrix(ROWS, COLUMNS, matrix1, COLUMNS, ROWS, matrix2, mul);
     // printMatrix(ROWS, ROWS, mul);
