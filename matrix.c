@@ -15,7 +15,6 @@ void printMatrix(int *matrix, int rows, int columns);
 void multiplyMatrix(int *matrix1, int rows1, int columns1, int *matrix2, int rows2, int columns2);
 int multiply(int a, int b);
 int *inverseColumnToRow(int *matrix, int rows, int columns);
-// void inverseColumnToRow(int rows, int columns, int inv_column, int matrix[rows][columns], int inverse_row_matrix[rows]);
 void printDashedLine(int times);
 void print2DMatrix(int rows, int columns, int matrix[rows][columns]);
 void printPartialMatrix(int *matrix, int size);
@@ -47,7 +46,7 @@ char *argv[];
         if (process_rank == 0)
         {
             printDashedLine(1);
-            fprintf(stderr, "Usage: please enter process size such that %d %% number_of_process == 0\nOR\nEnter the different number rows!\n", ROWS);
+            fprintf(stderr, "Usage: please enter process size/rows such that number_of_rows %% number_of_process == 0\nOR\nEnter the different numbers for rows!\n");
         }
         MPI_Finalize();
         exit(1);
@@ -75,11 +74,6 @@ char *argv[];
 
     if (process_rank == root_process)
     {
-        float starting_time = MPI_Wtime();
-        printDashedLine(2);
-        printf("Starting time: %f", starting_time);
-        printDashedLine(2);
-
         if ((matrix1 = (int *)malloc(LENGTH_OF_METRIX * sizeof(int))) == NULL)
         {
             printf("First matrix cannot be created!");
@@ -88,8 +82,13 @@ char *argv[];
         generateMatrix(matrix1, ROWS, COLUMNS);
         generateMatrix(matrix2, COLUMNS, ROWS);
 
-        printMatrix(matrix1, ROWS, COLUMNS);
-        printMatrix(matrix2, COLUMNS, ROWS);
+        float starting_time = MPI_Wtime();
+        printDashedLine(2);
+        printf("Starting time: %f", starting_time);
+        printDashedLine(2);
+
+        // printMatrix(matrix1, ROWS, COLUMNS);
+        // printMatrix(matrix2, COLUMNS, ROWS);
     }
 
     int send_count = LENGTH_OF_METRIX / process_size;
@@ -104,10 +103,10 @@ char *argv[];
     MPI_Scatter(matrix1, send_count, MPI_INT, matrix1_rows, send_count, MPI_INT, root_process, MPI_COMM_WORLD);
     MPI_Bcast(matrix2, LENGTH_OF_METRIX, MPI_INT, root_process, MPI_COMM_WORLD);
 
-    printf("\nmatrix 1\n");
-    printPartialMatrix(matrix1_rows, send_count);
-    printf("\nmatrix 2\n");
-    printPartialMatrix(matrix2, LENGTH_OF_METRIX);
+    // printf("\nmatrix 1\n");
+    // printPartialMatrix(matrix1_rows, send_count);
+    // printf("\nmatrix 2\n");
+    // printPartialMatrix(matrix2, LENGTH_OF_METRIX);
 
     // Columns of matrix 2
     // Resultant product matrix will be the size of this columns of matrix 2.
@@ -117,6 +116,7 @@ char *argv[];
     // printf("send_count %d\n", send_count);
     // printf("product_matrix_rows %d\n", product_matrix_rows);
     int *product_matrix;
+
     // Example to understand the below steps.
     // Let's assume, matrix1 = 4x3 and matrix2 = 3x4 and number_of_processes = 2
     // Sending half of matrix1 to each process. (2x3 of matrix1 and sending whole matrix2 to all the processes)
@@ -158,7 +158,7 @@ char *argv[];
         if ((resultant_matrix = malloc((process_size * product_matrix_length) * sizeof(int))) == NULL)
         {
             printf("Resultant matrix cannot be created!");
-            
+
             exit(1);
         }
     }
@@ -170,9 +170,9 @@ char *argv[];
 
     if (root_process == process_rank)
     {
-        printf("resultant_matrix");
+        // printf("resultant_matrix");
         // printPartialMatrix(resultant_matrix, ROWS * ROWS);
-        printMatrix(resultant_matrix, ROWS, ROWS);
+        // printMatrix(resultant_matrix, ROWS, ROWS);
         // print2DMatrix(process_size, ROWS * (LENGTH_OF_METRIX / send_count), resultant_matrix);
 
         // printf("\n\nExpected\n");
@@ -191,8 +191,13 @@ char *argv[];
 
     MPI_Finalize();
     if (root_process == process_rank)
+    {
+        // Allocated only at the root processes
         free(matrix1);
+        free(resultant_matrix);
+    }
     free(matrix2);
+    free(product_matrix);
     return 0;
 }
 
@@ -220,14 +225,6 @@ int *inverseColumnToRow(int *matrix, int rows, int columns)
     }
     return matrix_part;
 }
-
-// void inverseColumnToRow(int rows, int columns, int inv_row, int matrix[rows][columns], int inverse_row_matrix[rows])
-// {
-//     for (int column_index = 0; column_index < columns; column_index++)
-//     {
-//         inverse_row_matrix[column_index] = matrix[inv_row][column_index];
-//     }
-// }
 
 void multiplyMatrix(int *matrix1, int rows1, int columns1, int *matrix2, int rows2, int columns2)
 {
